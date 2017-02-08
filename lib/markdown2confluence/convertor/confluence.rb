@@ -19,6 +19,7 @@
 #
 
 require 'rexml/parsers/baseparser'
+require 'pry'
 
 module Kramdown
 
@@ -47,7 +48,13 @@ module Kramdown
         @indent = 2
         @stack = []
         @table_header = false
+        @format = options[:confluence_format]
       end
+
+      CODEBLOCK_DEFAULT_THEME = 'Confluence'
+      CODEBLOCK_LANG_MAPPING = {
+        javascript: 'js'
+      }
 
       # The mapping of element type to conversion method.
       DISPATCHER = Hash.new {|h,k| h[k] = "convert_#{k}"}
@@ -147,7 +154,7 @@ module Kramdown
         @table_header = true
         "#{inner(el, indent)}"
       end
-      
+
       def convert_tbody(el, indent)
         @table_header = false
         "#{inner(el, indent)}"
@@ -157,15 +164,15 @@ module Kramdown
       def convert_tr(el, indent)
         if @table_header
           "||#{inner(el, indent)}\n"
-        else 
+        else
           "|#{inner(el, indent)}\n"
         end
       end
-      
+
       def convert_td(el, indent)
         if @table_header
           " #{inner(el, indent)} ||"
-        else 
+        else
           " #{inner(el, indent)} |"
         end
       end
@@ -185,7 +192,8 @@ module Kramdown
       def convert_a(el, indent)
         text   = inner(el,indent)
         link   = el.attr['href']
-        "[#{text+'|' unless text.nil?}#{link}]"
+
+        "[#{[text, link].compact.join('|')}]"
       end
 
       def convert_img(el, indent)
@@ -195,15 +203,38 @@ module Kramdown
       end
 
       def convert_codeblock(el, indent)
-        "{code}#{el.value}{code}\n"
+        options = []
+        lang = CODEBLOCK_LANG_MAPPING[el.options[:lang].to_s.to_sym]
+        options << ":language=#{lang}" unless lang.nil?
+        options << ":theme=#{CODEBLOCK_DEFAULT_THEME}"
+
+        <<~STR
+          {code#{options.join('|')}}
+          #{el.value}
+          {code}
+        STR
+      end
+
+      ENTITIES_MAPPING = {
+         '{' => '&#123;',
+         '}' => '&#125;',
+         '+' => '&#43;'
+      }
+
+      # HACK need to convert some special characters to HTML entities to
+      # avoid crash
+      def escape_special_chars(str)
+        ENTITIES_MAPPING.reduce(str) { |s, (k, v)| s.gsub(k, v) }
       end
 
       def convert_codespan(el, indent)
-        if  el.value.strip.match(/\n/)
-          language, code = el.value.split("\n", 2)
+        val = el.value.strip
+
+        if val.match(/\n/)
+          language, code = val.split("\n", 2)
           "{code#{":language=#{language}" if not language.empty?}}\n#{code}{code}\n"
         else
-          "{{#{el.value.strip}}}"
+          "{{#{escape_special_chars(val)}}}"
         end
       end
 
@@ -248,7 +279,7 @@ module Kramdown
       end
 
       def handle_iframes(text)
-        markup=text.gsub(/<iframe.*iframe>/) { |match| 
+        markup=text.gsub(/<iframe.*iframe>/) { |match|
           doc =Nokogiri::HTML::DocumentFragment.parse(match)
           element=doc.search('iframe').first
           attributes=element.attributes.map{ |at| "#{at[1].name}=#{at[1].value}"}
