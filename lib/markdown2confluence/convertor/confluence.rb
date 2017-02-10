@@ -204,7 +204,7 @@ module Kramdown
 
       def convert_codeblock(el, indent)
         options = []
-        lang = CODEBLOCK_LANG_MAPPING[el.options[:lang].to_s.to_sym]
+        lang = CODEBLOCK_LANG_MAPPING[el.options[:lang].to_s.to_sym] || 'py'
         options << ":language=#{lang}" unless lang.nil?
         options << ":theme=#{CODEBLOCK_DEFAULT_THEME}"
 
@@ -218,7 +218,8 @@ module Kramdown
       ENTITIES_MAPPING = {
          '{' => '&#123;',
          '}' => '&#125;',
-         '+' => '&#43;'
+         '+' => '&#43;',
+         '_' => '&#818;'
       }
 
       # HACK need to convert some special characters to HTML entities to
